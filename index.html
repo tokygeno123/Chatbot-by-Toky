@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kaiz-GPT Chat Interface</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .chat-message {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .typing-indicator::after {
+            content: '...';
+            animation: typing 1.5s infinite;
+        }
+        @keyframes typing {
+            0% { content: '.'; }
+            33% { content: '..'; }
+            66% { content: '...'; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto max-w-4xl px-4 py-8">
+        <!-- Header -->
+        <header class="flex items-center justify-between mb-8">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 flex items-center justify-center">
+                    <i class="fas fa-robot text-white"></i>
+                </div>
+                <h1 class="text-2xl font-bold text-gray-800">Kaiz-GPT</h1>
+            </div>
+            <div class="text-sm text-gray-500">
+                <span id="uid-display" class="bg-gray-200 px-3 py-1 rounded-full"></span>
+            </div>
+        </header>
+        <!-- Chat Container -->
+        <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+            <!-- Messages Area -->
+            <div id="chat-container" class="h-96 p-4 overflow-y-auto space-y-4">
+                <div class="chat-message flex justify-start">
+                    <div class="max-w-xs md:max-w-md lg:max-w-lg bg-gray-100 rounded-xl px-4 py-3">
+                        <p class="text-gray-800">Hello! I'm Kaiz-GPT. Ask me anything and I'll do my best to help.</p>
+                    </div>
+                </div>
+            </div>
+            <!-- Input Area -->
+            <div class="border-t border-gray-200 p-4 bg-gray-50">
+                <form id="chat-form" class="flex space-x-2">
+                    <input 
+                        type="text" 
+                        id="user-input" 
+                        placeholder="Type your message..." 
+                        class="flex-1 px-4 py-2 rounded-full border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        autocomplete="off"
+                    >
+                    <button 
+                        type="submit" 
+                        class="w-12 h-12 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 text-white flex items-center justify-center hover:from-purple-600 hover:to-blue-600 transition-all"
+                    >
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </form>
+                <div class="mt-2 flex items-center justify-between text-xs text-gray-500">
+                    <div>
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" id="web-search-toggle" class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
+                            <span class="ml-2">Enable Web Search</span>
+                        </label>
+                    </div>
+                    <div id="status-indicator" class="flex items-center">
+                        <span class="h-2 w-2 rounded-full bg-green-500 mr-1"></span>
+                        <span>Connected</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        // Generate and store UID
+        function generateUID() {
+            return 'uid-' + Math.random().toString(36).substr(2, 9);
+        }
+        // Get or create UID from localStorage
+        function getOrCreateUID() {
+            let uid = localStorage.getItem('kaiz-gpt-uid');
+            if (!uid) {
+                uid = generateUID();
+                localStorage.setItem('kaiz-gpt-uid', uid);
+            }
+            return uid;
+        }
+        // Display UID
+        const uid = getOrCreateUID();
+        document.getElementById('uid-display').textContent = uid;
+        // Chat functionality
+        const chatForm = document.getElementById('chat-form');
+        const userInput = document.getElementById('user-input');
+        const chatContainer = document.getElementById('chat-container');
+        const webSearchToggle = document.getElementById('web-search-toggle');
+        const statusIndicator = document.getElementById('status-indicator');
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const message = userInput.value.trim();
+            if (!message) return;
+            
+            // Add user message to chat
+            addMessage(message, 'user');
+            userInput.value = '';
+            
+            // Show typing indicator
+            const typingIndicator = document.createElement('div');
+            typingIndicator.className = 'chat-message flex justify-start';
+            typingIndicator.innerHTML = `
+                <div class="max-w-xs md:max-w-md lg:max-w-lg bg-gray-100 rounded-xl px-4 py-3">
+                    <p class="text-gray-800 typing-indicator">Kaiz-GPT is typing</p>
+                </div>
+            `;
+            chatContainer.appendChild(typingIndicator);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            
+            try {
+                // Update status to loading
+                statusIndicator.innerHTML = `
+                    <span class="h-2 w-2 rounded-full bg-yellow-500 mr-1"></span>
+                    <span>Thinking...</span>
+                `;
+                
+                // Call API
+                const webSearch = webSearchToggle.checked ? 'on' : 'off';
+                const response = await fetch(`https://kaiz-apis.gleeze.com/api/gpt-4o?ask=${encodeURIComponent(message)}&uid=${uid}&webSearch=${webSearch}`);
+                
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                
+                const data = await response.json();
+                
+                // Remove typing indicator
+                chatContainer.removeChild(typingIndicator);
+                
+                // Add bot response to chat
+                addMessage(data.response, 'bot');
+                
+                // Update status to success
+                statusIndicator.innerHTML = `
+                    <span class="h-2 w-2 rounded-full bg-green-500 mr-1"></span>
+                    <span>Connected</span>
+                `;
+            } catch (error) {
+                console.error('Error:', error);
+                
+                // Remove typing indicator
+                chatContainer.removeChild(typingIndicator);
+                
+                // Show error message
+                addMessage("Sorry, I'm having trouble connecting right now. Please try again later.", 'bot');
+                
+                // Update status to error
+                statusIndicator.innerHTML = `
+                    <span class="h-2 w-2 rounded-full bg-red-500 mr-1"></span>
+                    <span>Connection Error</span>
+                `;
+            }
+        });
+        function addMessage(message, sender) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message flex ${sender === 'user' ? 'justify-end' : 'justify-start'}`;
+            
+            messageDiv.innerHTML = `
+                <div class="max-w-xs md:max-w-md lg:max-w-lg rounded-xl px-4 py-3 
+                    ${sender === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-800'}">
+                    <p>${message}</p>
+                </div>
+            `;
+            
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+        // Allow pressing Enter to send message (but Shift+Enter for new line)
+        userInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                chatForm.dispatchEvent(new Event('submit'));
+            }
+        });
+    </script>
+</body>
+  </html>
